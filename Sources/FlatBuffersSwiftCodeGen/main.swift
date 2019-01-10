@@ -63,7 +63,7 @@ guard let outputDirectory = parsedArguments.get(outputDirectoryOptionArgument) e
     exit(1)
 }
 
-let withoutImport = parsedArguments.get(importTypeOptionArgument) != .download
+let withoutImport = parsedArguments.get(importTypeOptionArgument) == .download
 let inputURL = URL(fileURLWithPath: inputDirectory.path.asString)
 let outputURL = URL(fileURLWithPath: outputDirectory.path.asString)
 
@@ -130,10 +130,10 @@ for swiftFileContent in swiftFileContents {
 if parsedArguments.get(importTypeOptionArgument) == .download {
     print("🕐 Downloading FlatBuffersBuilder")
     let builderData = try Data(contentsOf: URL(string: "https://raw.github.com/mzaks/FlatBuffersSwift/1.0.0/FlatBuffersSwift/FlatBuffersBuilder.swift")!)
-    try!builderData.write(to: outputURL.deletingLastPathComponent().appendingPathComponent("FlatBuffersBuilder.swift"))
+    try!builderData.write(to: outputURL.appendingPathComponent("FlatBuffersBuilder.swift"))
     print("✅ Completed")
     print("🕐 Downloading FlatBuffersReader")
     let readerData = try Data(contentsOf: URL(string: "https://raw.githubusercontent.com/mzaks/FlatBuffersSwift/1.0.0/FlatBuffersSwift/FlatBuffersReader.swift")!)
-    try!readerData.write(to: outputURL.deletingLastPathComponent().appendingPathComponent("FlatBuffersReader.swift"))
+    try!readerData.write(to: outputURL.appendingPathComponent("FlatBuffersReader.swift"))
     print("✅ Completed")
 }
