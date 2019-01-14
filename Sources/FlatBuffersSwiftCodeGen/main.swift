@@ -107,12 +107,21 @@ extension Array where Element == URL {
     }
 }
 
-let swiftFileContents = fbsURLs
-    .schemas()
-    .compactMap { (url: URL, schema: Schema) -> (url: URL, data: Data)? in
-        let data = schema.swift(withImport: !withoutImport).data(using: .utf8)
-        return data == nil ? nil : (url, data!)
-    }
+let schemas = fbsURLs.schemas()
+let nameSpaces = schemas.map { $0.schema }.namespaces()
+
+let swiftFileContents = schemas.compactMap { (url: URL, schema: Schema) -> (url: URL, data: Data)? in
+    let data = schema.swift(withImport: !withoutImport).data(using: .utf8)
+    return data == nil ? nil : (url, data!)
+}
+
+let nameSpaceURL = outputURL.appendingPathComponent("nameSpaces.swift")
+do {
+    try nameSpaces.data(using: .utf8)?.write(to: nameSpaceURL)
+    print("✅ Wrote namespace file to \(nameSpaceURL.path)")
+} catch(let error) {
+    print("❌ Could not generate \(nameSpaceURL.path), (\(error.localizedDescription)")
+}
 
 for swiftFileContent in swiftFileContents {
     let suffix = swiftFileContent.url.path.replacingOccurrences(of: inputURL.path + "/", with: "")

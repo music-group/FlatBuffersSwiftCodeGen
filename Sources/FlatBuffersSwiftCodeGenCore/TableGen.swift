@@ -10,25 +10,27 @@ import Foundation
 
 extension Table {
     
-    public func swift(lookup: IdentLookup, isRoot: Bool = false, fileIdentifier: String = "nil") -> String {
+    public func swift(lookup: IdentLookup, isRoot: Bool = false, fileIdentifier: String = "nil", nameSpace: String?) -> String {
+        let nameSpace = nameSpace ?? ""
         return """
-        \(swiftClass(lookup:lookup.flattened))
-        \(readerProtocolExtension(lookup:lookup.flattened))
-        \(fromDataExtenstion(lookup:lookup.flattened, isRoot: isRoot))
-        \(insertExtenstion(lookup:lookup.flattened))
-        \(insertMethod(lookup:lookup.flattened, isRoot: isRoot, fileIdentifier: fileIdentifier))
+        \(swiftClass(lookup:lookup.flattened, nameSpace: nameSpace))
+        \(readerProtocolExtension(lookup:lookup.flattened, nameSpace: nameSpace))
+        \(fromDataExtenstion(lookup:lookup.flattened, isRoot: isRoot, nameSpace: nameSpace))
+        \(insertExtenstion(lookup:lookup.flattened, nameSpace: nameSpace))
+        \(insertMethod(lookup:lookup.flattened, isRoot: isRoot, fileIdentifier: fileIdentifier, nameSpace: nameSpace))
         """
     }
     
-    public func readerProtocolExtension(lookup: IdentLookup) -> String {
+    public func readerProtocolExtension(lookup: IdentLookup, nameSpace: String?) -> String {
+        let nameSpace = nameSpace ?? ""
         func gen(_ fieldEnum: (String, Int, Field)) -> String {
             let fieldName = fieldEnum.0
             let index = fieldEnum.1
             let field = fieldEnum.2
             return """
-                public var \(fieldName): \(protocolType(field.type, lookup)) {
+                public var \(fieldName): \(protocolType(field.type, lookup, nameSpace: nameSpace)) {
             \(guardForOffset(field, index, lookup))
-                    return \(accessorReturnExpression(field, index, lookup))
+                    return \(accessorReturnExpression(field, index, lookup, nameSpace: nameSpace))
                 }
             """
         }
@@ -36,7 +38,7 @@ extension Table {
             lookup: lookup,
             withUniontypes: false)
         return """
-        extension \(name.value).Direct {
+        extension \(nameSpace).\(name.value).Direct {
             public init?<R : FlatBuffersReader>(reader: R, myOffset: Offset? = nil) {
                 guard let reader = reader as? T else {
                     return nil
@@ -53,7 +55,7 @@ extension Table {
                 }
             }
             public var hashValue: Int { return Int(_myOffset) }
-            public static func ==<T>(t1 : \(name.value).Direct<T>, t2 : \(name.value).Direct<T>) -> Bool {
+            public static func ==<T>(t1: \(nameSpace).\(name.value).Direct<T>, t2: \(nameSpace).\(name.value).Direct<T>) -> Bool {
                 return t1._reader.isEqual(other: t2._reader) && t1._myOffset == t2._myOffset
             }
         \(computedFields.map{return gen($0)}.joined(separator: "\n"))
@@ -61,51 +63,55 @@ extension Table {
         """
     }
     
-    public func swiftClass(lookup: IdentLookup) -> String {
+    public func swiftClass(lookup: IdentLookup, nameSpace: String?) -> String {
+        let nameSpace = nameSpace ?? ""
         func genFields(fields: [Field]) -> String {
             let fieldDefs = fields.map { (field) -> String in
-                return "    public var \(field.fieldName): \(field.type.swiftWithOptional)"
+                return "        public var \(field.fieldName): \(field.type.swiftWithOptional(nameSpace: nameSpace))"
             }
             return fieldDefs.joined(separator: "\n")
         }
         func genInitParams(fields: [Field]) -> String {
             let params = fields.map { (field) -> String in
-                var defaultValue = field.defaultValue?.value ?? field.type.defaultValue(lookup: lookup)
+                var defaultValue = field.defaultValue?.value ?? field.type.defaultValue(lookup: lookup, nameSpace: nameSpace)
                 if let defaultIdent = field.defaultIdent?.value {
-                    defaultValue = field.type.swift + "." + defaultIdent
+                    defaultValue = field.type.swift(nameSpace: nameSpace) + "." + defaultIdent
                 }
-                return "\(field.fieldName): \(field.type.swiftWithOptional) = \(defaultValue)"
+                return "\(field.fieldName): \(field.type.swiftWithOptional(nameSpace: nameSpace) ) = \(defaultValue)"
             }
             return params.joined(separator: ", ")
         }
         func genInitAssignments(fields: [Field]) -> String {
             let statements = fields.map { (field) -> String in
                 
-                return "        self.\(field.fieldName) = \(field.fieldName)"
+                return "            self.\(field.fieldName) = \(field.fieldName)"
             }
             return statements.joined(separator: "\n")
         }
         return """
-    public final class \(name.value) {
+    extension \(nameSpace) {
+        public final class \(name.value) {
     \(genFields(fields: fields))
-        public init(\(genInitParams(fields: fields))) {
+            public init(\(genInitParams(fields: fields))) {
     \(genInitAssignments(fields: fields))
-        }
-        public struct Direct<T : FlatBuffersReader> : Hashable, FlatBuffersDirectAccess {
-            fileprivate let _reader : T
-            fileprivate let _myOffset : Offset
+            }
+            public struct Direct<T : FlatBuffersReader> : Hashable, FlatBuffersDirectAccess {
+                fileprivate let _reader : T
+                fileprivate let _myOffset : Offset
+            }
         }
     }
     """
     }
     
-    public func fromDataExtenstion(lookup: IdentLookup, isRoot: Bool = false) -> String {
+    public func fromDataExtenstion(lookup: IdentLookup, isRoot: Bool = false, nameSpace: String?) -> String {
+        let nameSpace = nameSpace ?? ""
         func genPub() -> String {
             if isRoot {
                 return """
-                    public static func from(data: Data) -> \(name.value)? {
+                    public static func from(data: Data) -> \(nameSpace).\(name.value)? {
                         let reader = FlatBuffersMemoryReader(data: data, withoutCopy: false)
-                        return \(name.value).from(selfReader: Direct<FlatBuffersMemoryReader>(reader: reader))
+                        return \(nameSpace).\(name.value).from(selfReader: Direct<FlatBuffersMemoryReader>(reader: reader))
                     }
                 """
             }
@@ -127,14 +133,14 @@ extension Table {
                 } else if let ref = field.type.ref {
                     if let t = lookup.tables[ref.value] {
                         if field.type.vector {
-                            return "        o.\(name) = selfReader.\(name).compactMap{ \(t.name.value).from(selfReader:$0) }"
+                            return "        o.\(name) = selfReader.\(name).compactMap{ \(nameSpace).\(t.name.value).from(selfReader:$0) }"
                         }
-                        return "        o.\(name) = \(t.name.value).from(selfReader:selfReader.\(name))"
+                        return "        o.\(name) = \(nameSpace).\(t.name.value).from(selfReader:selfReader.\(name))"
                     } else if let u = lookup.unions[ref.value] {
                         if field.type.vector {
                             fatalError("Union vector nos supported yet")
                         }
-                        return "        o.\(name) = \(u.name.value).from(selfReader: selfReader.\(field.fieldName))"
+                        return "        o.\(name) = \(nameSpace).\(u.name.value).from(selfReader: selfReader.\(field.fieldName))"
                     } else {
                         if field.type.vector {
                             return "        o.\(name) = selfReader.\(name).compactMap{$0}"
@@ -147,16 +153,16 @@ extension Table {
             return statements.joined(separator: "\n")
         }
         return """
-    extension \(name.value) {
+    extension \(nameSpace).\(name.value) {
     \(genPub())
-         static func from(selfReader: Direct<FlatBuffersMemoryReader>?) -> \(name.value)? {
+         static func from(selfReader: Direct<FlatBuffersMemoryReader>?) -> \(nameSpace).\(name.value)? {
             guard let selfReader = selfReader else {
                 return nil
             }
-            if let o = selfReader._reader.cache?.objectPool[selfReader._myOffset] as? \(name.value) {
+            if let o = selfReader._reader.cache?.objectPool[selfReader._myOffset] as? \(nameSpace).\(name.value) {
                 return o
             }
-            let o = \(name.value)()
+            let o = \(nameSpace).\(name.value)()
             selfReader._reader.cache?.objectPool[selfReader._myOffset] = o
     \(genAssignmentStatements(fields: fields))
 
@@ -166,12 +172,12 @@ extension Table {
     """
     }
     
-    public func insertExtenstion(lookup: IdentLookup) -> String {
+    public func insertExtenstion(lookup: IdentLookup, nameSpace: String?) -> String {
         func parameters(values: [(name: String, index: Int, root: Field)]) -> String {
             let results = values.filter({ (v) -> Bool in
                 return v.root.isDeprecated == false
             }).map { (v) -> String in
-                return "\(v.name): \(v.root.type.swiftFB(lookup: lookup)) = \(v.root.type.defaultValueFB(lookup: lookup))"
+                return "\(v.name): \(v.root.type.swiftFB(lookup: lookup, nameSpace: nameSpace)) = \(v.root.type.defaultValueFB(lookup: lookup, nameSpace: nameSpace))"
             }
             return results.joined(separator: ", ")
         }
@@ -205,12 +211,12 @@ extension Table {
                         """
                     }
                     if lookup.enums[ref.value] != nil {
-                        return "        valueCursors[\(v.index)] = try self.insert(value: \(v.name).rawValue, defaultValue: \(v.root.type.defaultValueFB(lookup: lookup)).rawValue, toStartedObjectAt: \(v.index))"
+                        return "        valueCursors[\(v.index)] = try self.insert(value: \(v.name).rawValue, defaultValue: \(v.root.type.defaultValueFB(lookup: lookup, nameSpace: nameSpace)).rawValue, toStartedObjectAt: \(v.index))"
                     }
                 }
                 
                 if v.root.type.scalar != nil {
-                    return "        valueCursors[\(v.index)] = try self.insert(value: \(v.name), defaultValue: \(v.root.type.defaultValueFB(lookup: lookup)), toStartedObjectAt: \(v.index))"
+                    return "        valueCursors[\(v.index)] = try self.insert(value: \(v.name), defaultValue: \(v.root.type.defaultValueFB(lookup: lookup, nameSpace: nameSpace)), toStartedObjectAt: \(v.index))"
                 }
                 fatalError("Unexpected case")
             }
@@ -231,7 +237,8 @@ extension Table {
         """
     }
     
-    public func insertMethod(lookup: IdentLookup, isRoot: Bool = false, fileIdentifier: String) -> String {
+    public func insertMethod(lookup: IdentLookup, isRoot: Bool = false, fileIdentifier: String, nameSpace: String?) -> String {
+        let nameSpace = nameSpace ?? ""
         func genOffsetAssignements(_ fields: [Field]) -> String {
             
             let statements = fields.map { (f) -> String in
@@ -330,7 +337,7 @@ extension Table {
                 var rightHand = v.name
                 if !v.root.type.vector {
                     if v.root.type.isEnum(lookup) {
-                        rightHand = "\(v.name) ?? \(v.root.type.defaultValueFB(lookup: lookup))"
+                        rightHand = "\(v.name) ?? \(v.root.type.defaultValueFB(lookup: lookup, nameSpace: nameSpace))"
                     }
                 }
                 
@@ -386,7 +393,7 @@ extension Table {
         let hasRecursiveProperties = isRecursive && sorted.filter{ $0.root.type.vector == false && $0.root.type.isRecursive(lookup)}.isEmpty == false
         
         return """
-        extension \(name.value) {
+        extension \(nameSpace).\(name.value) {
             func insert(_ builder : FlatBuffersBuilder) throws -> Offset {
                 if builder.options.uniqueTables {
                     if let myOffset = builder.cache[ObjectIdentifier(self)] {
@@ -410,8 +417,8 @@ extension Table {
         """
     }
     
-    private func protocolType(_ type : Type, _ lookup: IdentLookup) -> String {
-        
+    private func protocolType(_ type : Type, _ lookup: IdentLookup, nameSpace: String?) -> String {
+        let nameSpace = nameSpace ?? ""
         if type.string {
             if type.vector {
                 return "FlatBuffersStringVector<T>"
@@ -422,33 +429,33 @@ extension Table {
             let t = Type(scalar: nil, vector: false, ref: ref, string: false)
             if lookup.tables[ref.value] != nil {
                 if type.vector {
-                    return "FlatBuffersTableVector<\(t.swift+".Direct<T>"), T>"
+                    return "FlatBuffersTableVector<\(t.swift(nameSpace: nameSpace)+".Direct<T>"), T>"
                 }
-                return t.swift + ".Direct<T>?"
+                return t.swift(nameSpace: nameSpace) + ".Direct<T>?"
             } else if lookup.structs[ref.value] != nil {
                 if type.vector {
-                    return "FlatBuffersScalarVector<\(t.swift), T>"
+                    return "FlatBuffersScalarVector<\(t.swift(nameSpace: nameSpace)), T>"
                 }
-                return t.swift + "?"
+                return t.swift(nameSpace: nameSpace) + "?"
             } else if let e = lookup.enums[ref.value] {
                 if type.vector {
-                    return "FlatBuffersEnumVector<\(e.type.swift), T, \(ref.value)>"
+                    return "FlatBuffersEnumVector<\(e.type.swift(nameSpace: nameSpace)), T, \(ref.value)>"
                 }
-                return ref.value + "?"
+                return "\(nameSpace).\(ref.value)?"
             } else if let _ = lookup.unions[ref.value] {
                 if type.vector {
                     fatalError("Union Vector is not supported yet")
                 }
-                return ref.value + ".Direct<T>?"
+                return "\(nameSpace).\(ref.value)" + ".Direct<T>?"
             }
             
             fatalError("Unexpected Type")
         }
         if type.scalar != nil && type.vector {
             let t = Type(scalar: type.scalar, vector: false, ref: nil, string: false)
-            return "FlatBuffersScalarVector<\(t.swift), T>"
+            return "FlatBuffersScalarVector<\(t.swift(nameSpace: nameSpace)), T>"
         }
-        return type.swift
+        return type.swift(nameSpace: nameSpace)
         
     }
     
@@ -465,7 +472,8 @@ extension Table {
         return "        guard let offset = _reader.offset(objectOffset: _myOffset, propertyIndex:\(index)) else {return nil}"
     }
     
-    private func accessorReturnExpression(_ field: Field, _ index: Int, _ lookup: IdentLookup) -> String {
+    private func accessorReturnExpression(_ field: Field, _ index: Int, _ lookup: IdentLookup, nameSpace: String?) -> String {
+        let nameSpace = nameSpace ?? ""
         let index = field.id ?? index.description
         if let scalar = field.type.scalar {
             if field.type.vector {
@@ -486,7 +494,7 @@ extension Table {
                 if field.type.vector {
                     return "FlatBuffersTableVector(reader: _reader, myOffset: _reader.offset(objectOffset: _myOffset, propertyIndex:\(index)))"
                 }
-                return t.swift + ".Direct(reader: _reader, myOffset: offset)"
+                return t.swift(nameSpace: nameSpace) + ".Direct(reader: _reader, myOffset: offset)"
             } else if lookup.structs[ref.value] != nil {
                 if field.type.vector {
                     return "FlatBuffersScalarVector(reader: _reader, myOffset: _reader.offset(objectOffset: _myOffset, propertyIndex:\(index)))"
@@ -497,13 +505,13 @@ extension Table {
                     return "FlatBuffersEnumVector(reader: _reader, myOffset: _reader.offset(objectOffset: _myOffset, propertyIndex:\(index)))"
                 }
                 let defaultCase = field.defaultIdent?.value ?? e.cases[0].ident.value
-                let enumName = e.name.value
+                let enumName = "\(nameSpace).\(e.name.value)"
                 return "\(enumName)(rawValue:_reader.get(objectOffset: _myOffset, propertyIndex: \(index), defaultValue: \(enumName).\(defaultCase).rawValue))"
             } else if lookup.unions[ref.value] != nil {
                 if field.type.vector {
                     fatalError("Vector of unions is not supported yet")
                 }
-                return t.swift + ".Direct.from(reader: _reader, propertyIndex : \(index), objectOffset : _myOffset)"
+                return t.swift(nameSpace: nameSpace) + ".Direct.from(reader: _reader, propertyIndex : \(index), objectOffset : _myOffset)"
             }
         }
         fatalError("Unexpeceted type")

@@ -54,7 +54,8 @@ extension Union: ASTNode {
 }
 
 extension Union {
-    var swift: String {
+    func swift(nameSpace: String?) -> String {
+        let nameSpace = nameSpace ?? ""
         func genCases(_ cases: [Ident]) -> String {
             let theCases = cases.map { (ident) -> String in
                 return "with\(ident.value)(\(ident.value))"
@@ -136,47 +137,49 @@ extension Union {
             return properties.joined(separator: "\n")
         }
         return """
-        public enum \(name.value) {
-            case \(genCases(cases))
-            static func from(selfReader: \(name.value).Direct<FlatBuffersMemoryReader>?) -> \(name.value)? {
-                guard let selfReader = selfReader else {
-                    return nil
-                }
-                switch selfReader {
-        \(genSwitchCases(cases))
-                }
-            }
-            public enum Direct<R : FlatBuffersReader> {
-                case \(genDirectCases(cases))
-                fileprivate static func from(reader: R, propertyIndex : Int, objectOffset : Offset?) -> \(name.value).Direct<R>? {
-                    guard let objectOffset = objectOffset else {
+        extension \(nameSpace) {
+            public enum \(name.value) {
+                case \(genCases(cases))
+                static func from(selfReader: \(name.value).Direct<FlatBuffersMemoryReader>?) -> \(name.value)? {
+                    guard let selfReader = selfReader else {
                         return nil
                     }
-                    let unionCase : Int8 = reader.get(objectOffset: objectOffset, propertyIndex: propertyIndex, defaultValue: 0)
-                    guard let caseObjectOffset : Offset = reader.offset(objectOffset: objectOffset, propertyIndex:propertyIndex + 1) else {
+                    switch selfReader {
+            \(genSwitchCases(cases))
+                    }
+                }
+                public enum Direct<R : FlatBuffersReader> {
+                    case \(genDirectCases(cases))
+                    fileprivate static func from(reader: R, propertyIndex : Int, objectOffset : Offset?) -> \(name.value).Direct<R>? {
+                        guard let objectOffset = objectOffset else {
+                            return nil
+                        }
+                        let unionCase : Int8 = reader.get(objectOffset: objectOffset, propertyIndex: propertyIndex, defaultValue: 0)
+                        guard let caseObjectOffset : Offset = reader.offset(objectOffset: objectOffset, propertyIndex:propertyIndex + 1) else {
+                            return nil
+                        }
+                        switch unionCase {
+            \(genDirectSwitchCases(cases, name.value))
+                        default:
+                            break
+                        }
                         return nil
                     }
-                    switch unionCase {
-        \(genDirectSwitchCases(cases, name.value))
-                    default:
-                        break
+            \(genDirectAsProperties(cases))
+                }
+                var unionCase: Int8 {
+                    switch self {
+            \(cases.enumerated().map{"          case .with\($0.element.value)(_): return \($0.offset + 1)"}.joined(separator: "\n"))
                     }
-                    return nil
                 }
-        \(genDirectAsProperties(cases))
-            }
-            var unionCase: Int8 {
-                switch self {
-        \(cases.enumerated().map{"          case .with\($0.element.value)(_): return \($0.offset + 1)"}.joined(separator: "\n"))
+                func insert(_ builder: FlatBuffersBuilder) throws -> Offset {
+                    switch self {
+            \(cases.enumerated().map{"          case .with\($0.element.value)(let o): return try o.insert(builder)"}.joined(separator: "\n"))
+                    }
                 }
+            \(genAsProperties(cases))
+            \(genValueProperty(cases))
             }
-            func insert(_ builder: FlatBuffersBuilder) throws -> Offset {
-                switch self {
-        \(cases.enumerated().map{"          case .with\($0.element.value)(let o): return try o.insert(builder)"}.joined(separator: "\n"))
-                }
-            }
-        \(genAsProperties(cases))
-        \(genValueProperty(cases))
         }
         """
     }

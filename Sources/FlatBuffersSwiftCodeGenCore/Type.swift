@@ -71,12 +71,13 @@ struct Type {
             }
         }
     }
-    var swift: String {
+    func swift(nameSpace: String?) -> String {
+        let nameSpace = nameSpace ?? ""
         var value = ""
         if string {
             value = "String"
         } else if let ref = ref {
-            value = ref.value
+            value = "\(nameSpace).\(ref.value)"
         } else if let scalar = scalar {
             value = scalar.swift
         }
@@ -85,15 +86,16 @@ struct Type {
         }
         return value
     }
-    func swiftFB(lookup: IdentLookup) -> String {
+    func swiftFB(lookup: IdentLookup, nameSpace: String?) -> String {
+        let nameSpace = nameSpace ?? ""
         var value = ""
         if string {
             value = "Offset?"
         } else if let ref = ref {
             if lookup.enums[ref.value] != nil{
-                value = ref.value
+                value = "\(nameSpace).\(ref.value)"
             } else if lookup.structs[ref.value] != nil {
-                value = ref.value + "?"
+                value = "\(nameSpace).\(ref.value)" + "?"
             } else {
                 value = "Offset?"
             }
@@ -105,8 +107,8 @@ struct Type {
         }
         return value
     }
-    var swiftWithOptional: String {
-        let value = swift
+    func swiftWithOptional(nameSpace: String?) -> String {
+        let value = swift(nameSpace: nameSpace)
         if vector == false {
             if string {
                 return "String?"
@@ -116,12 +118,13 @@ struct Type {
         }
         return value
     }
-    func defaultValue(lookup: IdentLookup) -> String {
+    func defaultValue(lookup: IdentLookup, nameSpace: String?) -> String {
+        let nameSpace = nameSpace ?? ""
         if vector {
             return "[]"
         } else if let ref = ref {
             if let e = lookup.enums[ref.value]{
-                return e.name.value + "." + e.cases[0].ident.value
+                return "\(nameSpace).\(e.name.value)" + "." + e.cases[0].ident.value
             }
             return "nil"
         } else if let scalar = scalar {
@@ -131,12 +134,13 @@ struct Type {
         }
         fatalError("Unexpected case")
     }
-    func defaultValueFB(lookup: IdentLookup) -> String {
+    func defaultValueFB(lookup: IdentLookup, nameSpace: String?) -> String {
+        let nameSpace = nameSpace ?? ""
         if vector {
             return "nil"
         } else if let ref = ref {
             if let e = lookup.enums[ref.value]{
-                return e.name.value + "." + e.cases[0].ident.value
+                return "\(nameSpace).\(e.name.value)" + "." + e.cases[0].ident.value
             }
             return "nil"
         } else if let scalar = scalar {

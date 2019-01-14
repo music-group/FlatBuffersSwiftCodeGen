@@ -75,6 +75,13 @@ fileprivate func parse(_ prefix: StaticString, pointer: UnsafePointer<UInt8>, le
 
 struct Namespace {
     let parts: [Ident]
+
+    var asPrefix: String {
+        return parts
+            .map { $0.value }
+            .map { $0.capitalized }
+            .joined()
+    }
 }
 extension Namespace: ASTNode {
     static func with(pointer: UnsafePointer<UInt8>, length: Int) -> (Namespace, UnsafePointer<UInt8>)? {
@@ -331,8 +338,8 @@ extension Schema {
             set.insert(s)
         }
     }
-    
-    public func swift(withImport: Bool = true) ->  String {
+
+    public func swift(withImport: Bool = true) -> String {
         let lookup = identLookup
         var result = StringBuilder()
         result.append("import Foundation")
@@ -344,6 +351,8 @@ extension Schema {
         var visited = Visited()
 
         func trace(result: StringBuilder, node: ASTNode, visited: Visited) {
+            let nameSpace = namespace?.asPrefix ?? ""
+
             if let table = node as? Table {
                 guard visited.set.contains(table.name) == false else {
                     return
@@ -351,9 +360,9 @@ extension Schema {
                 visited.insert(table.name)
                 let rootType = self.rootType?.ident.value
                 if table.name.value == rootType, let fileIdentifier = fileIdent?.value.value {
-                    result.append(table.swift(lookup: lookup, isRoot: table.name.value == rootType, fileIdentifier: fileIdentifier))
+                    result.append(table.swift(lookup: lookup, isRoot: table.name.value == rootType, fileIdentifier: fileIdentifier, nameSpace: nameSpace))
                 } else {
-                    result.append(table.swift(lookup: lookup, isRoot: table.name.value == rootType))
+                    result.append(table.swift(lookup: lookup, isRoot: table.name.value == rootType, nameSpace: nameSpace))
                 }
 
                 for f in table.fields {
@@ -374,13 +383,13 @@ extension Schema {
                     return
                 }
                 visited.insert(e.name)
-                result.append(e.swift)
+                result.append(e.swift(nameSpace: nameSpace))
             } else if let s = node as? Struct {
                 guard visited.set.contains(s.name) == false else {
                     return
                 }
                 visited.insert(s.name)
-                result.append(s.swift)
+                result.append(s.swift(nameSpace: nameSpace))
                 for f in s.fields {
                     if let ref = f.type.ref?.value,
                         let _s = lookup.structs[ref] {
@@ -392,7 +401,7 @@ extension Schema {
                     return
                 }
                 visited.insert(u.name)
-                result.append(u.swift)
+                result.append(u.swift(nameSpace: nameSpace))
                 for u_case in u.cases {
                     if let t = lookup.tables[u_case.value] {
                         trace(result: result, node: t, visited: visited)
@@ -426,5 +435,22 @@ extension Schema {
         }
 
         return result.value
+    }
+}
+
+extension Sequence where Iterator.Element: Hashable {
+    var uniqueElements: [Iterator.Element] {
+        return Array(Set(self))
+    }
+}
+
+public extension Array where Element == Schema {
+    public func namespaces() -> String {
+        return compactMap {
+            $0.namespace?.asPrefix
+        }
+        .uniqueElements
+        .map { "public enum \($0) {}" }
+        .joined(separator: "\n")
     }
 }

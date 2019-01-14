@@ -80,7 +80,8 @@ extension Enum: ASTNode {
 }
 
 extension Enum {
-    var swift: String {
+    func swift(nameSpace: String?) -> String {
+        let nameSpace = nameSpace ?? ""
         if type.vector {fatalError("enum \(name.value) type cannot be a vector")}
         if type.string {fatalError("enum \(name.value) type cannot be a string")}
         if type.ref != nil {fatalError("enum \(name.value) type cannot be \(type.ref!.value)")}
@@ -100,13 +101,15 @@ extension Enum {
             return result.joined(separator: ", ")
         }
         return """
-public enum \(self.name.value): \(type.swift), FlatBuffersEnum {
-    case \(gen(cases))
-    public static func fromScalar<T>(_ scalar: T) -> \(self.name.value)? where T : Scalar {
-        guard let value = scalar as? RawValue else {
-            return nil
+extension \(nameSpace) {
+    public enum \(name.value): \(type.swift(nameSpace: nameSpace)), FlatBuffersEnum {
+        case \(gen(cases))
+        public static func fromScalar<T>(_ scalar: T) -> \(self.name.value)? where T : Scalar {
+            guard let value = scalar as? RawValue else {
+                return nil
+            }
+            return \(self.name.value)(rawValue: value)
         }
-        return \(self.name.value)(rawValue: value)
     }
 }
 """
