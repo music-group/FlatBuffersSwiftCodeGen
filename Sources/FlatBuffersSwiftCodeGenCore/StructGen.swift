@@ -9,7 +9,8 @@
 import Foundation
 
 extension Struct {
-    var swift: String {
+    func swift(nameSpace: String?) -> String {
+        let nameSpace = nameSpace ?? ""
         if fields.isEmpty {fatalError("struct \(name.value) has no fields")}
         for field in fields {
             if field.defaultIdent != nil || field.defaultValue != nil {fatalError("struct \(name.value).\(field.name.value) has a default value")}
@@ -18,7 +19,7 @@ extension Struct {
         }
         func genFields(_ fields: [Field]) -> String {
             let fieldStrings = fields.map {
-                "    public let \($0.name.value): \($0.type.swift)"
+                "    public let \($0.name.value): \($0.type.swift(nameSpace: nameSpace))"
             }
             return fieldStrings.joined(separator: "\n")
         }
